@@ -250,6 +250,19 @@
           <label for="autoLinkUrlsCheckbox">Link bare URLs in preview (e.g. https://example.com)</label>
         </div>
         <fieldset class="settings-section">
+          <legend>Vault Encryption</legend>
+          <label class="settings-checkbox-row">
+            <input type="checkbox" id="encryptionEnabledCheckbox" />
+            <span>Encrypt vault files with GPG</span>
+          </label>
+          <label class="field-label" for="encryptionRecipientInput">Recipient key</label>
+          <input id="encryptionRecipientInput" class="modal-input" type="text" autocomplete="off" placeholder="Key ID, fingerprint, or email" />
+          <p class="field-hint">Vault files are stored as armored GPG files with a <code>.gpg</code> suffix and decrypted only in memory.</p>
+          <label class="field-label" for="encryptionPassphraseInput">Private key passphrase</label>
+          <input id="encryptionPassphraseInput" class="modal-input" type="password" autocomplete="off" placeholder="Optional; kept for this session only" />
+          <p class="field-hint">Passphrase is never saved. Leave blank if your GPG agent handles unlocks.</p>
+        </fieldset>
+        <fieldset class="settings-section">
           <legend>Table of Contents Macro</legend>
           <label class="settings-radio-row">
             <input type="radio" name="tocListStyle" id="tocUnorderedRadio" value="unordered" />

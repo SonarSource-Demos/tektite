@@ -3,33 +3,33 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("tektite", {
   chooseVault: () => ipcRenderer.invoke("vault:choose"),
   scanVault: (rootPath) => ipcRenderer.invoke("vault:scan", rootPath),
-  readNote: (rootPath, relativePath) => ipcRenderer.invoke("note:read", rootPath, relativePath),
+  readNote: (rootPath, relativePath, encryption) => ipcRenderer.invoke("note:read", rootPath, relativePath, encryption),
   getNoteModifiedTimes: (rootPath, relativePaths) =>
     ipcRenderer.invoke("notes:modified-times", rootPath, relativePaths),
-  writeNote: (rootPath, relativePath, content) =>
-    ipcRenderer.invoke("note:write", rootPath, relativePath, content),
-  createNote: (rootPath, requestedName, folder, templatePath) =>
-    ipcRenderer.invoke("note:create", rootPath, requestedName, folder, templatePath),
+  writeNote: (rootPath, relativePath, content, encryption) =>
+    ipcRenderer.invoke("note:write", rootPath, relativePath, content, encryption),
+  createNote: (rootPath, requestedName, folder, templatePath, encryption) =>
+    ipcRenderer.invoke("note:create", rootPath, requestedName, folder, templatePath, encryption),
   listTemplates: (rootPath, templatesPath) => ipcRenderer.invoke("templates:list", rootPath, templatesPath),
   loadSettings: (rootPath) => ipcRenderer.invoke("settings:load", rootPath),
-  saveSettings: (rootPath, settings) => ipcRenderer.invoke("settings:save", rootPath, settings),
+  saveSettings: (rootPath, settings, encryption) => ipcRenderer.invoke("settings:save", rootPath, settings, encryption),
   createFolder: (rootPath, requestedName, parentFolder) =>
     ipcRenderer.invoke("folder:create", rootPath, requestedName, parentFolder),
   deleteEntry: (rootPath, relativePath, type) =>
     ipcRenderer.invoke("entry:delete", rootPath, relativePath, type),
-  renameEntry: (rootPath, relativePath, type, requestedName) =>
-    ipcRenderer.invoke("entry:rename", rootPath, relativePath, type, requestedName),
-  moveEntry: (rootPath, relativePath, type, targetFolder) =>
-    ipcRenderer.invoke("entry:move", rootPath, relativePath, type, targetFolder),
+  renameEntry: (rootPath, relativePath, type, requestedName, encryption) =>
+    ipcRenderer.invoke("entry:rename", rootPath, relativePath, type, requestedName, encryption),
+  moveEntry: (rootPath, relativePath, type, targetFolder, encryption) =>
+    ipcRenderer.invoke("entry:move", rootPath, relativePath, type, targetFolder, encryption),
   importImage: (rootPath, sourcePath, targetFolder) =>
     ipcRenderer.invoke("asset:import-image", rootPath, sourcePath, targetFolder),
-  importFile: (rootPath, sourcePath, targetFolder) =>
-    ipcRenderer.invoke("asset:import-file-or-directory", rootPath, sourcePath, targetFolder),
+  importFile: (rootPath, sourcePath, targetFolder, encryption) =>
+    ipcRenderer.invoke("asset:import-file-or-directory", rootPath, sourcePath, targetFolder, encryption),
   saveClipboardImage: (rootPath, targetFolder, image) =>
     ipcRenderer.invoke("asset:save-clipboard-image", rootPath, targetFolder, image),
-  readAssetDataUrl: (rootPath, relativePath) =>
-    ipcRenderer.invoke("asset:read-data-url", rootPath, relativePath),
-  setVaultWindowTitle: (vaultName) => ipcRenderer.invoke("window:set-vault-name", vaultName),
+  readAssetDataUrl: (rootPath, relativePath, encryption) =>
+    ipcRenderer.invoke("asset:read-data-url", rootPath, relativePath, encryption),
+  setVaultWindowTitle: (vaultName, gitUrl) => ipcRenderer.invoke("window:set-vault-name", vaultName, gitUrl),
   printPreview: (payload) => ipcRenderer.invoke("preview:print", payload),
   syncGit: (rootPath) => ipcRenderer.invoke("git:sync", rootPath),
   loadWorkspaceState: (rootPath) => ipcRenderer.invoke("workspace:load", rootPath),

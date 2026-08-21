@@ -36,13 +36,15 @@ function registerIpcHandlers({
     const validation = await validateVaultRoot(rootPath, event.sender);
     if (!validation.ok) return validation;
 
-    const { tree, notes } = await fileService.scanVault(rootPath);
+    const encryption = await encryptionOptions(rootPath);
+    const { tree, notes } = await fileService.scanVault(rootPath, encryption);
     const hasGitRepo = await gitService.hasGitRepository(rootPath);
     const gitProvider = hasGitRepo ? await gitService.gitProviderFor(rootPath) : null;
+    const gitUrl = hasGitRepo ? await gitService.remoteUrlFor(rootPath) : null;
     await configManager.rememberRecentVault(rootPath);
     buildMenu();
     log("vault:scan complete", { rootPath, notes: notes.length });
-    return { ok: true, rootPath, tree, notes, hasGitRepo, gitProvider };
+    return { ok: true, rootPath, tree, notes, hasGitRepo, gitProvider, gitUrl };
   });
 
   ipcMain.handle("preview:print", (event, payload = {}) => printPreview({
@@ -79,7 +81,7 @@ function registerIpcHandlers({
     windowManager.setPaneState(event.sender, paneState);
   });
   ipcMain.handle("window:register", () => true);
-  ipcMain.handle("window:set-vault-name", (event, vaultName) => windowManager.setVaultName(event.sender, vaultName));
+  ipcMain.handle("window:set-vault-name", (event, vaultName, gitUrl) => windowManager.setVaultName(event.sender, vaultName, gitUrl));
 
   ipcMain.handle("git:sync", async (event, rootPath) => {
     log("git:sync", rootPath);
@@ -87,64 +89,64 @@ function registerIpcHandlers({
     return gitService.sync(rootPath, send);
   });
 
-  ipcMain.handle("note:read", (_event, rootPath, relativePath) => {
+  ipcMain.handle("note:read", async (_event, rootPath, relativePath, encryption = {}) => {
     log("note:read", relativePath);
-    return fileService.readNote(rootPath, relativePath);
+    return fileService.readNote(rootPath, relativePath, await encryptionOptions(rootPath, encryption));
   });
   ipcMain.handle("notes:modified-times", (_event, rootPath, relativePaths = []) => (
     fileService.noteModifiedTimes(rootPath, relativePaths)
   ));
-  ipcMain.handle("note:write", (_event, rootPath, relativePath, content) => {
+  ipcMain.handle("note:write", async (_event, rootPath, relativePath, content, encryption = {}) => {
     log("note:write", relativePath, `${content.length} chars`);
-    return fileService.writeNote(rootPath, relativePath, content);
+    return fileService.writeNote(rootPath, relativePath, content, await encryptionOptions(rootPath, encryption));
   });
-  ipcMain.handle("note:create", (_event, rootPath, requestedName, folder = "", templatePath = "") => {
+  ipcMain.handle("note:create", async (_event, rootPath, requestedName, folder = "", templatePath = "", encryption = {}) => {
     log("note:create", { requestedName, folder, templatePath });
-    return fileService.createNote(rootPath, requestedName, folder, templatePath);
+    return fileService.createNote(rootPath, requestedName, folder, templatePath, await encryptionOptions(rootPath, encryption));
   });
-  ipcMain.handle("templates:list", (_event, rootPath, templatesPath = "") => {
+  ipcMain.handle("templates:list", async (_event, rootPath, templatesPath = "") => {
     log("templates:list", rootPath, templatesPath);
-    return fileService.listTemplates(rootPath, templatesPath);
+    return fileService.listTemplates(rootPath, templatesPath, await encryptionOptions(rootPath));
   });
   ipcMain.handle("settings:load", (_event, rootPath) => {
     log("settings:load", rootPath);
     return fileService.loadSettings(rootPath);
   });
-  ipcMain.handle("settings:save", (_event, rootPath, settings) => {
+  ipcMain.handle("settings:save", (_event, rootPath, settings, encryption = {}) => {
     log("settings:save", rootPath, settings);
-    return fileService.saveSettings(rootPath, settings);
+    return fileService.saveSettings(rootPath, settings, encryption);
   });
   ipcMain.handle("folder:create", (_event, rootPath, requestedName, parentFolder = "") => {
     log("folder:create", { requestedName, parentFolder });
     return fileService.createFolder(rootPath, requestedName, parentFolder);
   });
-  ipcMain.handle("entry:delete", (_event, rootPath, relativePath, type) => {
+  ipcMain.handle("entry:delete", async (_event, rootPath, relativePath, type) => {
     log("entry:delete", { relativePath, type });
-    return fileService.deleteEntry(rootPath, relativePath, type);
+    return fileService.deleteEntry(rootPath, relativePath, type, await encryptionOptions(rootPath));
   });
-  ipcMain.handle("entry:rename", (_event, rootPath, relativePath, type, requestedName) => {
+  ipcMain.handle("entry:rename", async (_event, rootPath, relativePath, type, requestedName, encryption = {}) => {
     log("entry:rename", { relativePath, type, requestedName });
-    return fileService.renameEntry(rootPath, relativePath, type, requestedName);
+    return fileService.renameEntry(rootPath, relativePath, type, requestedName, await encryptionOptions(rootPath, encryption));
   });
-  ipcMain.handle("entry:move", (_event, rootPath, relativePath, type, targetFolder = "") => {
+  ipcMain.handle("entry:move", async (_event, rootPath, relativePath, type, targetFolder = "", encryption = {}) => {
     log("entry:move", { relativePath, type, targetFolder });
-    return fileService.moveEntry(rootPath, relativePath, type, targetFolder);
+    return fileService.moveEntry(rootPath, relativePath, type, targetFolder, await encryptionOptions(rootPath, encryption));
   });
-  ipcMain.handle("asset:import-image", (_event, rootPath, sourcePath, targetFolder = "") => {
+  ipcMain.handle("asset:import-image", async (_event, rootPath, sourcePath, targetFolder = "") => {
     log("asset:import-image", { sourcePath, targetFolder });
-    return fileService.importImage(rootPath, sourcePath, targetFolder);
+    return fileService.importImage(rootPath, sourcePath, targetFolder, await encryptionOptions(rootPath));
   });
-  ipcMain.handle("asset:import-file-or-directory", (_event, rootPath, sourcePath, targetFolder = "") => {
+  ipcMain.handle("asset:import-file-or-directory", async (_event, rootPath, sourcePath, targetFolder = "", encryption = {}) => {
     log("asset:import-file-or-directory", { sourcePath, targetFolder });
-    return fileService.importFileOrDirectory(rootPath, sourcePath, targetFolder);
+    return fileService.importFileOrDirectory(rootPath, sourcePath, targetFolder, await encryptionOptions(rootPath, encryption));
   });
-  ipcMain.handle("asset:save-clipboard-image", (_event, rootPath, targetFolder = "", image = {}) => {
+  ipcMain.handle("asset:save-clipboard-image", async (_event, rootPath, targetFolder = "", image = {}) => {
     log("asset:save-clipboard-image", { targetFolder, name: image.name, mimeType: image.mimeType });
-    return fileService.saveClipboardImage(rootPath, targetFolder, image);
+    return fileService.saveClipboardImage(rootPath, targetFolder, image, await encryptionOptions(rootPath));
   });
-  ipcMain.handle("asset:read-data-url", (_event, rootPath, relativePath) => {
+  ipcMain.handle("asset:read-data-url", async (_event, rootPath, relativePath, encryption = {}) => {
     log("asset:read-data-url", relativePath);
-    return fileService.readAssetDataUrl(rootPath, relativePath);
+    return fileService.readAssetDataUrl(rootPath, relativePath, await encryptionOptions(rootPath, encryption));
   });
 
   ipcMain.handle("terminal:create", (event, cwd, cols, rows) => terminalService.create(event.sender, cwd, cols, rows));
@@ -180,6 +182,15 @@ async function printPreview({ BrowserWindow, event, payload, printPreviewDocumen
   } finally {
     if (!printWindow.isDestroyed()) printWindow.close();
   }
+}
+
+async function encryptionOptions(rootPath, encryption = {}) {
+  const settings = await require("./services/fileService").loadSettings(rootPath);
+  return {
+    enabled: Boolean(settings.encryptionEnabled),
+    recipient: settings.encryptionRecipient || "",
+    passphrase: encryption && typeof encryption.passphrase === "string" ? encryption.passphrase : ""
+  };
 }
 
 module.exports = { registerIpcHandlers };

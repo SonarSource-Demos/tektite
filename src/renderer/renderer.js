@@ -29,6 +29,7 @@ const state = {
   graphContentCollapsed: false,
   hasGitRepo: false,
   gitProvider: null,
+  gitUrl: null,
   gitSyncInProgress: false,
   gitOutputUnsubscribe: null,
   saveTimer: null,
@@ -75,8 +76,11 @@ const state = {
     templatesPath: "",
     autoLinkUrls: false,
     tocListStyle: "unordered",
-    tocIncludeSubfolders: false
-  }
+    tocIncludeSubfolders: false,
+    encryptionEnabled: false,
+    encryptionRecipient: ""
+  },
+  encryptionPassphrase: ""
 };
 
 const WORKSPACE_STORAGE_PREFIX = "tektite:workspace:";
@@ -149,6 +153,9 @@ const els = {
   settingsForm: document.getElementById("settingsForm"),
   templatesPathInput: document.getElementById("templatesPathInput"),
   autoLinkUrlsCheckbox: document.getElementById("autoLinkUrlsCheckbox"),
+  encryptionEnabledCheckbox: document.getElementById("encryptionEnabledCheckbox"),
+  encryptionRecipientInput: document.getElementById("encryptionRecipientInput"),
+  encryptionPassphraseInput: document.getElementById("encryptionPassphraseInput"),
   treeFontSizeInput: document.getElementById("treeFontSizeInput"),
   editorFontSizeInput: document.getElementById("editorFontSizeInput"),
   tocUnorderedRadio: document.getElementById("tocUnorderedRadio"),
@@ -1064,6 +1071,7 @@ async function openVault(rootPath) {
     state.previewRevision = Date.now();
     state.hasGitRepo = Boolean(vault.hasGitRepo);
     state.gitProvider = vault.gitProvider || null;
+    state.gitUrl = vault.gitUrl || null;
     state.settings = normalizeSettings(await globalThis.tektite.loadSettings(state.rootPath).catch(() => null));
     applyFontSizes();
     state.activePath = null;
@@ -1080,9 +1088,9 @@ async function openVault(rootPath) {
     renderTags();
 
     localStorage.setItem("tektite:lastVault", rootPath);
-    const vaultName = rootPath.split(/[\\/]/).pop() || rootPath;
+    const vaultName = vaultNameFromRoot(rootPath);
     els.vaultName.textContent = vaultName;
-    await globalThis.tektite.setVaultWindowTitle(vaultName);
+    await globalThis.tektite.setVaultWindowTitle(rootPath, state.gitUrl);
     updateGitSyncButton();
     renderTree();
     updateGraph();
@@ -1121,6 +1129,8 @@ async function refreshVault(options = {}) {
   state.previewRevision = Date.now();
   state.hasGitRepo = Boolean(vault.hasGitRepo);
   state.gitProvider = vault.gitProvider || null;
+  state.gitUrl = vault.gitUrl || null;
+  await globalThis.tektite.setVaultWindowTitle(state.rootPath, state.gitUrl);
   indexNotes();
   reconcileOpenTabs();
   await loadGraphContent();
@@ -1159,7 +1169,7 @@ async function createNote(context = currentSelection()) {
   const { name: requestedName, templatePath } = result;
   const folder = folderForContext(context);
   try {
-    const newPath = await globalThis.tektite.createNote(state.rootPath, requestedName, folder, templatePath);
+    const newPath = await globalThis.tektite.createNote(state.rootPath, requestedName, folder, templatePath, encryptionOptions());
     await refreshVault();
     await openNote(newPath);
     log("createNote complete", newPath);
@@ -1237,7 +1247,7 @@ async function renameSelectedEntry(context = currentSelection()) {
   try {
     clearTimeout(state.saveTimer);
     if (state.activePath) await saveActiveNote();
-    const newPath = await globalThis.tektite.renameEntry(state.rootPath, context.path, context.type, requestedName);
+    const newPath = await globalThis.tektite.renameEntry(state.rootPath, context.path, context.type, requestedName, encryptionOptions());
     const previousActivePath = state.activePath;
     await refreshVault({ flush: false });
 
@@ -1519,7 +1529,7 @@ async function createMentionNode() {
   }
   const requestedName = mentionResult.name;
   try {
-    const newPath = await globalThis.tektite.createNote(state.rootPath, requestedName, parentFolder(sourcePath));
+    const newPath = await globalThis.tektite.createNote(state.rootPath, requestedName, parentFolder(sourcePath), "", encryptionOptions());
     await refreshVault();
     if (state.activePath !== sourcePath && entryExists(sourcePath, "note")) {
       await openNote(sourcePath);
@@ -1713,7 +1723,7 @@ async function onTreeDrop(event) {
       if (imageExts.has(ext)) {
         await globalThis.tektite.importImage(state.rootPath, sourcePath, targetFolderPath);
       } else {
-        await globalThis.tektite.importFile(state.rootPath, sourcePath, targetFolderPath);
+        await globalThis.tektite.importFile(state.rootPath, sourcePath, targetFolderPath, encryptionOptions());
       }
     }
     state.collapsedFolders.delete(targetFolderPath);
@@ -1739,7 +1749,7 @@ async function moveTreeEntry(payload, targetFolderPath) {
   try {
     if (!canMoveTreeEntry(payload, targetFolderPath)) return;
     const originalActivePath = state.activePath;
-    const nextPath = await globalThis.tektite.moveEntry(state.rootPath, payload.path, payload.type, targetFolderPath);
+    const nextPath = await globalThis.tektite.moveEntry(state.rootPath, payload.path, payload.type, targetFolderPath, encryptionOptions());
     updateMovedEntryState(payload, nextPath, originalActivePath);
     state.collapsedFolders.delete(targetFolderPath);
     await refreshVault();
@@ -2006,7 +2016,7 @@ async function activateTab(relativePath, type, options = {}) {
     els.editor.classList.add("hidden");
     els.formattingBar.classList.add("hidden");
     els.imageViewer.classList.remove("hidden");
-    const dataUrl = await globalThis.tektite.readAssetDataUrl(state.rootPath, relativePath);
+    const dataUrl = await globalThis.tektite.readAssetDataUrl(state.rootPath, relativePath, encryptionOptions());
     els.imageViewerImage.src = dataUrl;
     els.imageViewerImage.alt = relativePath.split("/").pop() || relativePath;
     els.noteTitle.textContent = relativePath.split("/").pop() || relativePath;
@@ -2093,7 +2103,7 @@ async function resolveNoteContent(relativePath) {
   if (Number.isFinite(ignoredModifiedAt) && state.noteContent.has(relativePath)) {
     return state.noteContent.get(relativePath);
   }
-  const content = await globalThis.tektite.readNote(state.rootPath, relativePath);
+  const content = await globalThis.tektite.readNote(state.rootPath, relativePath, encryptionOptions());
   state.noteContent.set(relativePath, content);
   const knownModifiedAt = state.externalNoteChanges.get(relativePath) ??
     state.noteByPath.get(relativePath)?.modifiedAt;
@@ -2113,7 +2123,7 @@ async function maybeReloadNoteFromExternalChange(relativePath) {
     state.externalNoteChanges.delete(relativePath);
     state.ignoredExternalNoteChanges.delete(relativePath);
     state.noteDiskModifiedAt.set(relativePath, modifiedAt);
-    return globalThis.tektite.readNote(state.rootPath, relativePath);
+    return globalThis.tektite.readNote(state.rootPath, relativePath, encryptionOptions());
   }
 
   state.externalNoteChanges.delete(relativePath);
@@ -2642,7 +2652,7 @@ async function saveActiveNote() {
     return;
   }
   setSaveState("Saving...");
-  const savedNote = await globalThis.tektite.writeNote(state.rootPath, state.activePath, state.activeContent);
+  const savedNote = await globalThis.tektite.writeNote(state.rootPath, state.activePath, state.activeContent, encryptionOptions());
   state.noteContent.set(state.activePath, state.activeContent);
   if (Number.isFinite(savedNote?.modifiedAt)) {
     state.noteDiskModifiedAt.set(state.activePath, savedNote.modifiedAt);
@@ -2677,6 +2687,7 @@ function showEmptyState(message = "Choose a local folder to start.") {
   state.previewForwardHistory = [];
   state.hasGitRepo = false;
   state.gitProvider = null;
+  state.gitUrl = null;
   state.tags = [];
   els.tagCloud.innerHTML = "";
   els.editor.value = "";
@@ -2694,7 +2705,12 @@ function showEmptyState(message = "Choose a local folder to start.") {
   updatePreviewNavButtons();
   updateGraph();
   renderLineNumbers();
+  globalThis.tektite.setVaultWindowTitle("").catch(() => {});
   saveWorkspaceState();
+}
+
+function vaultNameFromRoot(rootPath) {
+  return rootPath.split(/[\\/]/).pop() || rootPath;
 }
 
 function handleUnavailableVault(result) {
@@ -2754,6 +2770,9 @@ function openSettingsDialog() {
   state.settings = normalizeSettings(state.settings);
   els.templatesPathInput.value = state.settings.templatesPath || "";
   els.autoLinkUrlsCheckbox.checked = Boolean(state.settings.autoLinkUrls);
+  els.encryptionEnabledCheckbox.checked = Boolean(state.settings.encryptionEnabled);
+  els.encryptionRecipientInput.value = state.settings.encryptionRecipient || "";
+  els.encryptionPassphraseInput.value = state.encryptionPassphrase;
   els.tocOrderedRadio.checked = state.settings.tocListStyle === "ordered";
   els.tocUnorderedRadio.checked = state.settings.tocListStyle !== "ordered";
   els.tocIncludeSubfoldersCheckbox.checked = Boolean(state.settings.tocIncludeSubfolders);
@@ -2777,11 +2796,38 @@ async function onSettingsSubmit(event) {
   const tocIncludeSubfolders = els.tocIncludeSubfoldersCheckbox.checked;
   const treeFontSize = Number(els.treeFontSizeInput.value) || 13;
   const editorFontSize = Number(els.editorFontSizeInput.value) || 15;
-  state.settings = normalizeSettings({ templatesPath, autoLinkUrls, tocListStyle, tocIncludeSubfolders, treeFontSize, editorFontSize });
+  const encryptionEnabled = els.encryptionEnabledCheckbox.checked;
+  const encryptionRecipient = els.encryptionRecipientInput.value.trim();
+  state.encryptionPassphrase = els.encryptionPassphraseInput.value;
+  if (encryptionEnabled && !encryptionRecipient) {
+    globalThis.alert("Enter a GPG recipient key before enabling vault encryption.");
+    return;
+  }
+  const nextSettings = normalizeSettings({
+    templatesPath,
+    autoLinkUrls,
+    tocListStyle,
+    tocIncludeSubfolders,
+    treeFontSize,
+    editorFontSize,
+    encryptionEnabled,
+    encryptionRecipient
+  });
+  const previousSettings = state.settings;
+  state.settings = nextSettings;
   applyFontSizes();
   if (state.rootPath) {
-    await globalThis.tektite.saveSettings(state.rootPath, state.settings).catch(() => {});
+    try {
+      await globalThis.tektite.saveSettings(state.rootPath, nextSettings, encryptionOptions(nextSettings));
+    } catch (error) {
+      state.settings = previousSettings;
+      applyFontSizes();
+      setSaveState("Failed");
+      globalThis.alert(error.message || "Could not save encryption settings.");
+      return;
+    }
   }
+  await refreshVault({ flush: false }).catch(() => {});
   closeSettingsDialog();
 }
 
@@ -2793,7 +2839,17 @@ function normalizeSettings(settings = {}) {
     tocListStyle: source.tocListStyle === "ordered" ? "ordered" : "unordered",
     tocIncludeSubfolders: Boolean(source.tocIncludeSubfolders),
     treeFontSize: Number.isFinite(source.treeFontSize) ? Math.min(24, Math.max(8, source.treeFontSize)) : 13,
-    editorFontSize: Number.isFinite(source.editorFontSize) ? Math.min(32, Math.max(8, source.editorFontSize)) : 15
+    editorFontSize: Number.isFinite(source.editorFontSize) ? Math.min(32, Math.max(8, source.editorFontSize)) : 15,
+    encryptionEnabled: Boolean(source.encryptionEnabled),
+    encryptionRecipient: typeof source.encryptionRecipient === "string" ? source.encryptionRecipient.trim() : ""
+  };
+}
+
+function encryptionOptions(settings = state.settings) {
+  return {
+    enabled: Boolean(settings.encryptionEnabled),
+    recipient: settings.encryptionRecipient || "",
+    passphrase: state.encryptionPassphrase || ""
   };
 }
 
@@ -2900,7 +2956,7 @@ async function loadGraphContent() {
   await Promise.all(
     state.notes.map(async (note) => {
       try {
-        nextContent.set(note.path, await globalThis.tektite.readNote(state.rootPath, note.path));
+        nextContent.set(note.path, await globalThis.tektite.readNote(state.rootPath, note.path, encryptionOptions()));
       } catch {
         nextContent.set(note.path, "");
       }

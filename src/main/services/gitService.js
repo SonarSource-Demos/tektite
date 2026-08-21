@@ -80,12 +80,42 @@ async function hasGitRepository(rootPath) {
 
 async function gitProviderFor(rootPath) {
   try {
-    const configPath = resolveVaultPath(rootPath, path.join(".git", "config"));
-    const config = await fs.readFile(configPath, "utf8");
+    const config = await readGitConfig(rootPath);
     return /\bgithub\.com[:/]/i.test(config) || /\bgithub\.com\b/i.test(config) ? "github" : "git";
   } catch {
     return "git";
   }
+}
+
+async function remoteUrlFor(rootPath) {
+  try {
+    const config = await readGitConfig(rootPath);
+    return remoteUrlFromConfig(config, "origin") || remoteUrlFromConfig(config) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function readGitConfig(rootPath) {
+  const configPath = resolveVaultPath(rootPath, path.join(".git", "config"));
+  return fs.readFile(configPath, "utf8");
+}
+
+function remoteUrlFromConfig(config, remoteName = "") {
+  const remoteHeader = remoteName ? `remote "${remoteName}"` : "remote ";
+  let inRemote = false;
+  for (const line of config.split(/\r?\n/)) {
+    const section = line.match(/^\s*\[([^\]]+)\]\s*$/);
+    if (section) {
+      inRemote = section[1].startsWith(remoteHeader);
+      continue;
+    }
+    if (inRemote) {
+      const url = line.match(/^\s*url\s*=\s*(.+?)\s*$/);
+      if (url) return url[1];
+    }
+  }
+  return null;
 }
 
 async function checkSshAuth(rootPath, send) {
@@ -235,5 +265,6 @@ function formatGitCommandOutput(command, result, emptyOutput = "") {
 module.exports = {
   gitProviderFor,
   hasGitRepository,
+  remoteUrlFor,
   sync
 };

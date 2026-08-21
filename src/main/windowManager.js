@@ -200,15 +200,24 @@ class WindowManager {
     if (win && this.tektiteWindows.has(win)) this.windowVaults.set(win, rootPath);
   }
 
-  setVaultName(sender, vaultName) {
+  setVaultName(sender, vaultPath, gitUrl = "") {
     const window = this.BrowserWindow.fromWebContents(sender);
     if (!window || !this.tektiteWindows.has(window)) return false;
 
-    const label = typeof vaultName === "string" && vaultName.trim() ? vaultName.trim() : "";
-    window.vaultName = label;
-    window.setTitle(label ? `Tektite - ${label}` : "Tektite");
+    const label = typeof vaultPath === "string" && vaultPath.trim() ? this.displayVaultPath(vaultPath.trim()) : "";
+    const url = typeof gitUrl === "string" && gitUrl.trim() ? gitUrl.trim() : "";
+    const title = label ? `Tektite :: ${label}${url ? ` (${url})` : ""}` : "Tektite";
+    window.vaultName = title;
+    window.setTitle(title);
     this.onWindowsChanged();
     return true;
+  }
+
+  displayVaultPath(vaultPath) {
+    const home = this.app.getPath("home");
+    if (vaultPath === home) return "~";
+    if (vaultPath.startsWith(`${home}${path.sep}`)) return `~${vaultPath.slice(home.length)}`;
+    return vaultPath;
   }
 
   focusWindow(window) {

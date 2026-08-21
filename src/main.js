@@ -78,6 +78,7 @@ function vaultArgFromArgv(argv) {
   for (const arg of argv.slice(1)) {
     if (arg.startsWith("-")) continue;
     const resolved = path.resolve(arg);
+    if (resolved === path.resolve(app.getAppPath())) continue;
     try {
       if (fsSync.statSync(resolved).isDirectory()) return resolved;
     } catch {
