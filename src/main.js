@@ -9,12 +9,14 @@ const { WindowManager, splashMinimumMs } = require("./main/windowManager");
 const fileService = require("./main/services/fileService");
 const gitService = require("./main/services/gitService");
 const { printPreviewDocument, printWebContents } = require("./main/services/printService");
+const { createLogger } = require("./main/services/logger");
 const { TerminalService } = require("./main/services/terminalService");
 
 app.name = "Tektite";
 app.setName("Tektite");
 
-function log() { /* verbose logging disabled */ }
+const logger = createLogger({ app });
+const log = (...args) => logger.info(...args);
 
 const configManager = new ConfigManager({ app, log });
 const windowManager = new WindowManager({
@@ -39,10 +41,19 @@ function buildMenu() {
     toggleMaximize: (window) => windowManager.toggleMaximize(window),
     createWindow: (options) => windowManager.createWindow(options),
     showAboutWindow: () => windowManager.showAboutWindow(),
+    openLogFile: openLogFileFromMenu,
     openRecentVault: openRecentVaultFromMenu,
     sendToActiveWindow: (channel, ...args) => windowManager.sendToActiveWindow(channel, ...args),
     sendToWindowOrCreate: (channel, ...args) => windowManager.sendToWindowOrCreate(channel, ...args)
   });
+}
+
+async function openLogFileFromMenu() {
+  log("open log file", logger.path);
+  const error = await shell.openPath(logger.path);
+  if (!error) return;
+  logger.error("open log file failed", error);
+  await shell.showItemInFolder(logger.path);
 }
 
 async function openRecentVaultFromMenu(vaultPath) {
@@ -168,6 +179,7 @@ registerIpcHandlers({
 });
 
 app.on("ready", async () => {
+  log("app ready", { version: app.getVersion(), platform: process.platform, logs: logger.path });
   app.setName("Tektite");
   await configManager.loadRecentVaults();
   buildMenu();

@@ -13,6 +13,7 @@ function buildApplicationMenu({
   toggleMaximize,
   createWindow,
   showAboutWindow,
+  openLogFile,
   openRecentVault,
   sendToActiveWindow,
   sendToWindowOrCreate
@@ -158,6 +159,7 @@ function buildApplicationMenu({
           label: "Open Documentation",
           click: () => shell.openExternal("https://github.com/mathiasconradt/tektite/blob/main/docs/user-guide.md")
         },
+        { label: "Open Log File", click: openLogFile },
         ...(isMac ? [] : [{ type: "separator" }, { label: "About Tektite", click: showAboutWindow }])
       ]
     }

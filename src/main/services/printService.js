@@ -41,12 +41,51 @@ function printPreviewDocument(payload = {}) {
 </html>`;
 }
 
-function printWebContents(printWindow) {
+async function printWebContents(printWindow, options = {}) {
+  const printers = await printersFor(printWindow);
+  options.log?.("print printers", summarizePrinters(printers));
+
   return new Promise((resolve) => {
     printWindow.webContents.print({ printBackground: true }, (success, failureReason) => {
-      resolve({ ok: success, error: success ? "" : failureReason || "Print canceled." });
+      const error = success ? "" : failureReason || "Print canceled.";
+      const result = {
+        ok: success,
+        error,
+        detail: success ? "" : printFailureDetail(error, printers),
+        printers: summarizePrinters(printers)
+      };
+      options.log?.("print result", result);
+      resolve(result);
     });
   });
+}
+
+async function printersFor(printWindow) {
+  try {
+    return await printWindow.webContents.getPrintersAsync();
+  } catch {
+    return [];
+  }
+}
+
+function summarizePrinters(printers = []) {
+  return printers.map((printer) => ({
+    name: printer.name,
+    displayName: printer.displayName || "",
+    isDefault: Boolean(printer.isDefault),
+    status: printer.status
+  }));
+}
+
+function printFailureDetail(error, printers = []) {
+  if (printers.length === 0) {
+    return "Tektite could not see any printers from Electron. Check macOS System Settings > Printers & Scanners, then restart Tektite.";
+  }
+
+  const defaultPrinter = printers.find((printer) => printer.isDefault);
+  const printerNames = printers.map((printer) => printer.displayName || printer.name).filter(Boolean).join(", ");
+  const defaultText = defaultPrinter ? `Default printer: ${defaultPrinter.displayName || defaultPrinter.name}.` : "No default printer reported by Electron.";
+  return `${defaultText} Available printers: ${printerNames || "none"}. Chromium print failure: ${error}.`;
 }
 
 function escapeHtml(value) {

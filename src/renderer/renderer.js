@@ -3437,13 +3437,15 @@ async function printCurrentPreview() {
     });
 
     if (result?.ok === false && result.error && !/cancel/i.test(result.error)) {
-      const msg = /no printer/i.test(result.error)
-        ? "No printers configured. Please add a printer in System Settings and try again."
-        : `Could not print: ${result.error}`;
+      const detail = result.detail ? `\n\n${result.detail}` : "";
+      const msg = /no printer/i.test(result.error) || result.printers?.length === 0
+        ? `No printers visible to Tektite. Please add a printer in System Settings and restart Tektite.${detail}`
+        : `Could not print.\n\nReason: ${result.error}${detail}`;
       globalThis.alert(msg);
     }
-  } catch {
-    globalThis.alert("Could not print. Please try again.");
+  } catch (error) {
+    const msg = error?.message || String(error) || "Unknown error.";
+    globalThis.alert(`Could not print.\n\nReason: ${msg}`);
   }
 }
 

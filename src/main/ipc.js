@@ -53,7 +53,8 @@ function registerIpcHandlers({
     payload,
     printPreviewDocument,
     printWebContents,
-    windowManager
+    windowManager,
+    log
   }));
 
   ipcMain.handle("workspace:load", async (_event, rootPath = "") => {
@@ -155,8 +156,13 @@ function registerIpcHandlers({
   ipcMain.handle("terminal:destroy", (_event, pid) => terminalService.destroy(pid));
 }
 
-async function printPreview({ BrowserWindow, event, payload, printPreviewDocument, printWebContents, windowManager }) {
+async function printPreview({ BrowserWindow, event, payload, printPreviewDocument, printWebContents, windowManager, log = () => {} }) {
   const parent = BrowserWindow.fromWebContents(event.sender) || windowManager.activeWindow() || undefined;
+  log("preview:print start", {
+    title: payload?.title || "",
+    path: payload?.path || "",
+    htmlLength: typeof payload?.html === "string" ? payload.html.length : 0
+  });
   const printWindow = new BrowserWindow({
     width: 900,
     height: 1100,
@@ -178,7 +184,11 @@ async function printPreview({ BrowserWindow, event, payload, printPreviewDocumen
       });
       printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     });
-    return printWebContents(printWindow);
+    printWindow.showInactive();
+    return await printWebContents(printWindow, { log });
+  } catch (error) {
+    log("preview:print failed", error);
+    throw error;
   } finally {
     if (!printWindow.isDestroyed()) printWindow.close();
   }
